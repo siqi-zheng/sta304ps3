@@ -153,7 +153,7 @@ fpc.srs = rep(N, n) #Create a vector
 
 ss.design <- svydesign(id=~1, data=new_survey_data, fpc=fpc.srs) #create the design method for the parameter in the linear model below
 
-mysvyglm <- svyglm(vote_2020 ~ sex+age+race_ethnicity+household_income, ss.design) #Fit a generalized linear model
+mysvyglm <- svyglm(vote_2020 ~ sex+age+race_ethnicity+household_income, ss.design, family=binomial(link='logit')) #Fit a generalized logistic model
 
 # Model Results (to Report in Results section)
 # summary(model)
@@ -169,7 +169,7 @@ In order to estimate the proportion of voters who will vote for Donald Trump I n
 # Here I will perform the post-stratification calculation
 census_data$estimate <-
   mysvyglm %>%
-  predict(newdata = census_data)
+  predict(newdata = census_data, type='response')
 
 sum(census_data$estimate*census_data$n)/sum(census_data$n)
 ```
