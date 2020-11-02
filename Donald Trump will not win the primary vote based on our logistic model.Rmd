@@ -1,0 +1,292 @@
+---
+title: "Donald Trump will not win the primary vote based on our logistic model"
+author: "Siqi Zheng (1005065830), Weijia Song (1004043689), Jiaxin Zhagng (1004970953)"
+date: "November 2, 2020"
+output:
+  pdf_document:
+    latex_engine: xelatex
+  
+---
+
+```{r setup, include=FALSE, message=FALSE}
+
+library(tidyverse) #load necessary packages
+library(haven) #load necessary packages
+library(survey) #load necessary packages
+
+# Loading in the cleaned survey Data
+survey_data <- read_csv("survey_data.csv")
+
+# Loading in the cleaned census Data
+census_data <- read_csv("census_data.csv")
+```
+
+```{r, survey cleaning commented out, include=FALSE}
+# Read in the raw data (You might need to change this if you use a different dataset)
+#raw_data <- read_dta("ns20200625.dta")
+# Add the labels
+#raw_data <- labelled::to_factor(raw_data)
+# Just keep some variables
+# reduced_data <- 
+#   raw_data %>% 
+#   select(vote_2020,
+#          gender,
+#          race_ethnicity,
+#          household_income,
+#          age)
+# Saving the survey/sample data as a csv file in my
+# working directory
+# write_csv(reduced_data, "survey_data.csv")
+```
+
+```{r, census data cleaning commented out, include=FALSE}
+# # Read in the raw data.
+# census_raw_data <- read_csv("usa_00003.csv.gz")
+# 
+# 
+# # Add the labels
+# census_raw_data <- labelled::to_factor(census_raw_data)
+# 
+# # Just keep some variables that may be of interest (change 
+# # this depending on your interests)
+# cleaned_data <- 
+#   census_raw_data %>% 
+#   select(SEX, 
+#          AGE, 
+#          RACE,
+#          HHINCOME)
+#          #stateicp,
+#          
+#          #hispan,
+#          #marst, 
+#          #bpl,
+#          #citizen,
+#          #educd,
+#          #labforce,
+#          #labforce)
+#          
+# cleaned_data <- 
+#   cleaned_data %>% 
+#   filter(HHINCOME!=9999999) %>%
+#   filter(age>=18) %>%
+#   mutate(race_ethnicity=factor(case_when(
+#     RACE==1 ~ 1,
+#     RACE==2 ~ 2,
+#     RACE==3 ~ 3,
+#     RACE==4|RACE==5|RACE==6 ~ 4,
+#     TRUE ~ 5)),
+#     sex=factor(SEX),
+#     age=as.integer(AGE),
+#     household_income=ifelse(
+#       HHINCOME>=63179,
+#       "above_median",
+#       "below_median"
+#     )
+#   ) %>%
+#   select(age, sex, race_ethnicity, household_income)
+# #### What's next? ####
+# 
+# cleaned_data <- 
+#   cleaned_data %>%
+#   filter(age>=18) %>%
+#   group_by(age,sex,race_ethnicity, household_income) %>%
+#   summarize(n=n())
+# 
+# ## Here I am only splitting cells by age, but you 
+# ## can use other variables to split by changing
+# ## count(age) to count(age, sex, ....)
+# # Saving the census data as a csv file in my
+# # working directory
+# write_csv(cleaned_data, "census_data.csv")
+```
+
+The link to the associated GitHub repo: https://github.com/siqi-zheng/sta304ps3
+
+# Model
+
+Here we are interested in predicting the popular vote outcome of the 2020 American federal election (include citation). To do this we are employing a post-stratification technique. In the following sub-sections I will describe the model specifics and the post-stratification calculation.
+```{r include = F}
+below_med = c("\\$15,000 to \\$19,999", "\\$20,000 to \\$24,999", "\\$25,000 to \\$29,999", 
+              "Less than \\$14,999", "\\$30,000 to \\$34,999", "\\$35,000 to \\$39,999",
+              "\\$40,000 to \\$44,999", "\\$45,000 to \\$49,999", "\\$50,000 to \\$54,999",
+              "\\$55,000 to \\$59,999", "\\$60,000 to \\$64,999")
+below_med = paste(below_med, collapse='|')
+new_survey_data <- survey_data %>% 
+  drop_na() %>%
+  filter(vote_2020=="Donald Trump"|vote_2020=="Joe Biden") %>% #Clean data to 0/1
+  mutate(vote_2020=ifelse(vote_2020=="Donald Trump",1,0),
+         race_ethnicity=factor(case_when(
+           race_ethnicity=="White" ~ 1,
+           race_ethnicity=="Black, or African American" ~ 2,
+           race_ethnicity=="American Indian or Alaska Native" ~ 3,
+           startsWith(race_ethnicity, "Asian")|startsWith(race_ethnicity, "Pacific") ~ 4,
+           TRUE ~ 5)), #Clean data to different groups
+         sex=factor(ifelse(gender=='Male',1,2)), #Clean data to different groups
+         household_income = ifelse(
+           grepl(below_med,household_income),
+           'below_median',
+           'above_median'
+         )) %>% #Clean data to different groups
+  select(vote_2020, sex, race_ethnicity, age, household_income)
+census_data$race_ethnicity = factor(census_data$race_ethnicity)
+census_data$sex = factor(census_data$sex)
+#census_data$household_income = factor(census_data$household_income)
+```
+
+## Model Specifics
+
+We selected logistic model because we are interested in whether a person will vote for Donald Trump. This is a dichotomy, meaning we can use logistic regression, which is suitable for examining the relationship between a categorical response variable and one or more categorical or continuous predictor variables, to estimate the effects. If this person votes for Trump, the dependent variable vote_2020 will be 1, otherwise 0 for voting to Biden.The general formula is:
+
+$ln[\frac{p}{1−p}]=β_0+β_1sex+β_2age+β_3race\_ethnicity2+β_4race\_ethnicity3+β_5race\_ethnicity4+β_6race\_ethnicity5+\beta_7household\_income$
+
+where $p$ is the probability of the occurrence of an event and $ln()$ is the natural logarithm, which is an essential characteristic of a logistic model.
+
+$\beta_0$ is the y-intercept of this function i.e. when a white female person is 18 with income above median. $\beta_1$ is the coefficient of sex (1 for male and 0 for female), $\beta_2$ is the coefficient of age (continuous numerical variable), $\beta_3$ is the coefficient of race_ethnicity2 (1 if black), $\beta_4$ is the coefficient of race_ethnicity3 (1 if native), $\beta_5$ is the coefficient of race_ethnicity4 (1 if Asian/Pacific), $\beta_6$ is the coefficient of race_ethnicity5 (1 if others) and $\beta_7$ is the coefficient of household income (categorical variable). 
+
+## Variable Selection
+
+Age, sex, ethnic group and household income are selected shown above since they are important factors to determine what a person is looking for from a president. Age is important since the elderly will support the president who promises to increase the transfer payment to them. Data with age below 18 are excluded because only adults have the privilege to vote. Moreover, we does not separate age groups because we believe it is hard to find a well-justified approach to separate age groups in this specific case. 
+
+Moreover, sex also plays a significant role because female will vote for the president who cares more about the gender equality. Only two types of sex (male and female) are considered because both survey and census only have binary outcomes in sex, which can be a limitation that will be further discussed in the weaknesses section.
+
+Furthermore, ethnic group cannot be ignored because people from the same ethnic group will vote for the president who shows more support to them. We group them into white/black/native/Asian and Pacific/others because the way to separate groups is different for survey and census data. Therefore, our method to separate ethnic groups is designed on the similarities of census and survey. More importantly, this variable includes all possible ethnic groups.
+
+Finally, household income affects a person's vote because people with higher income will generally support the president who reduces taxes for them. As a result, each cell(group) is created based on the combination of these variables. We believe a median income is a good standard to separate socioeconomic status as it is not affected by the extreme income. Moreover, this way of recreating variables makes the model more concise. 
+
+The variables are encoded as numbers so that it follows the encoding method of the census dataset. Appendix I will include the detailed meaning of the number in each variable.
+
+## Model Details
+
+Our model is also adjusted for the population. The population of the US $N$ was 326656651 in 2018. However, the number of participant $n$ in this survey is small compared to the population, so this adjustment is not very significant ($\frac{n}{N}<<1$). Hence we expect that a very similar model will be fitted without such adjustment i.e. such adjustment may not be necessary.
+
+In order to construct a logistic model with software R, we use the package "tidyverse" to clean the data and create new variables. We also use the package "survey" to fit the logistic model with population adjustment. For the clarity of this report, codes are hidden. Complete codes can be found in the associated .Rmd file.
+```{r, include=FALSE}
+n=length(new_survey_data$sex) #Sample size
+
+N=326656651  #population of US in 2018
+
+fpc.srs = rep(N, n) #Create a vector
+
+ss.design <- svydesign(id=~1, data=new_survey_data, fpc=fpc.srs) #create the design method for the parameter in the linear model below
+
+mysvyglm <- svyglm(vote_2020 ~ sex+age+race_ethnicity+household_income, ss.design, family=binomial(link = "logit")) #Fit a generalized linear model
+
+# Here I will perform the post-stratification calculation
+census_data$estimate <-
+  mysvyglm %>%
+  predict(newdata = census_data, type='response')
+
+result = sum(census_data$estimate*census_data$n)/sum(census_data$n) #y_hat
+#print(round(result*100,2))
+```
+
+## Post-Stratification 
+
+In order to estimate the proportion of voters who will vote for Donald Trump $\hat{y}^{PS}$, I will perform a post-stratification analysis. This is because it changes the sampling weights of each cell(group) so that biases will be less for underrepresented groups in the population. Cells are created using the variables sex, age, race and household income and each cell represents an unique combination of these four variables. 
+
+Note that the proportion of voters in $j^{th}$ cell ($\hat{y}_j$) can be estimated Using the model described in the previous sub-section. In addition, the weight of each group is calculated using $w_j=\frac{N_j}{\sum_{i=1}^nN_j}$, where $N_j$ is the population size of a cell based on demographics. As a result, the estimated proportion $\hat{y}^{PS}$ will be calculated by the sum of all weighted proportions i.e. the sum of the product of the population of a cell $j$ and its corresponding proportion $\hat{y}_j$ divided by the total population $\sum_{i=1}^nN_j$:
+
+$$\hat{y}^{PS}=\frac{\sum_{i=1}^nN_j\hat{y_j}}{\sum_{i=1}^nN_j}=\sum_{i=1}^nw_j\hat{y_j}$$
+```{r echo = FALSE}
+print(head(census_data, 5)[,1:4])
+```
+Figure 1. Census data after Post-stratification 
+
+# Results
+```{r echo = FALSE}
+# Model Results (to Report in Results section)
+# summary(model)
+# OR
+summary(mysvyglm)
+```
+
+Figure 2. Summary of the model
+
+According to the results of Figure 2,  we can see the p value of regression coefficient (the last column). Most variables including female(sex2), age, black(race_ ethnicity2), Asian/Pacific(race_ethnicity4) and others(race_ethnicity5), are  significant at the 5% significance level. In this model, the regression coefficient of age is very significant (p-value < 0.01). 
+
+However, the p-value for the intercept is not significant at 5%, meaning we have no evidence to reject that the intercept is 0. The p-value for household income is slightly higher than 0.05, but I believe it is still an important variable to incorporate.
+
+# Discussion
+
+## Summary
+
+First, the census data used for post-stratification is a cleaned census dataset from IPUMS, a website and database providing access to integrated, high-precision samples of the American population. The survey data is from Democracy Fund and UCLA Nationscape Dataset created by a partnership between Democracy Fund Voter Study Group and UCLA Political Scientists. 
+
+We chose logistic regression model to analyze the election result since it was a binary outcome, either voting for Donald Trump or not. In particular, the model was generated using variables age, sex, race ethnicity and household income. Finally, based on the strata from our post-stratification technique, we estimate the proportion who will vote for Trump in the US i.e. $\hat{y}^{PS}$. 
+
+## Conclusion
+
+We believe Biden will win the primary vote given that the proportion who will vote for Trump is less than 50%. Based off the estimated proportion of voters in favor of voting for the Democratic party being `r round(100*result, 2)`%, we predict that the Democratic party will win the election.
+
+## Weaknesses
+
+A questionnaire is time-consuming and expensive, and the response rate might be low because voters may find it is too troublesome. For the accuracy of prediction, the data should be relevant and timely for an accurate result. Nevertheless, the respondents might change their minds before the election, leading to inaccurate predictions. 
+
+Moreover, biases might exist in our variables. For instance, we excluded data such as "I do not know" in the variable "vote_2020" when doing data analysis, which could have meant certain political affiliation. Moreover, the variable sex contains only two options: male and female, but we have no idea about the term "sex" is biological sex or psychological sex. 
+
+Another important remark is that we did not include the variable "state" because some areas in the census data were not included in the survey data. Nonetheless, states could still be an essential indicator of the election because people from different states have a strong inclination to a political party.
+
+## Next Steps
+
+To gather more up-to-date data, we may need to analyze the whole longitude dataset containing a series of surveys for a better prediction. This way allows us to understand the insights of the attitudes of the US voters.
+
+In addition, an in-depth analysis about the non-responses can be valuable for researchers who are interested in the election. Researchers can also consider a follow-up survey after the election so that they can compare our prediction with the actual results and enhance this logistic model. 
+
+Lastly, we may need a census dataset that can better supplement the survey. In this case, we may be able to include the variable "state" in our model without worrying about the meaning of between-state areas in the current given census dataset.
+
+\newpage
+# References
+
+RStudio Team (2020). RStudio: Integrated Development for R. RStudio, PBC, Boston, MA URL http://www.rstudio.com/.
+
+Steven Ruggles, Sarah Flood, Ronald Goeken, Josiah Grover, Erin Meyer, Jose Pacas and Matthew Sobek. IPUMS USA: [ACS 5yr].  (n.d.). IPUMS USA. Retrieved November 01, 2020, from https://usa.ipums.org/usa/index.shtml
+
+Tausanovitch, Chris and Lynn Vavreck. (2020, October 30). New: Second Nationscape Data Set Release. Retrieved November 01, 2020, from https://www.voterstudygroup.org/publication/nationscape-data-set
+
+The United States Census Bureau (n.d.) U.S. and World Population Clock. (n.d.). Retrieved November 02, 2020, from https://www.census.gov/popclock/
+Lumley T (2020). "survey: analysis of complex survey samples." R package version 4.0.
+
+The United States Census Bureau (2019, September 10). U.S. Median Household Income Was $63,179 in 2018, Not Significantly Different From 2017. Retrieved November 01, 2020, from https://www.census.gov/library/stories/2019/09/us-median-household-income-not-significantly-different-from-2017.html
+
+Wickham, H. (2019, November 21). Easily Install and Load the 'Tidyverse' [R package tidyverse version 1.3.0]. Retrieved November 01, 2020, from https://cran.r-project.org/web/packages/tidyverse/index.html
+
+
+\newpage
+# Appendix A What the Numbers in Each Variable Means?
+
+~ means the way it is encoded under this variable
+
+## vote_2020
+
+Voting for Donald Trump ~ 1
+
+Voting for Joe Biden ~ 0
+
+## race_ethnicity
+
+Race ethnicity is "White" ~ 1
+
+Race ethnicity is "Black, or African American" ~ 2
+
+Race ethnicity is "American Indian or Alaska Native" ~ 3
+
+Race ethnicity is "Asian" or race_ethnicity is "Pacific" ~ 4
+
+Race ethnicity is "Others" ~ 5
+           
+## sex
+
+Male ~ 1
+
+Female ~ 2
+
+## household_income
+
+Household income below \$65,000 ~ below_median
+
+Household income above or equal to \$65,000 ~ above_median
+
+\newpage
+# Appendix B GitHub Link
+
+The link to the associated GitHub repo: https://github.com/siqi-zheng/sta304ps3
